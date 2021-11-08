@@ -1,6 +1,8 @@
 from flask import Flask, url_for, session
 from flask import render_template, redirect
 from authlib.integrations.flask_client import OAuth
+from authlib.integrations.flask_oauth2 import ResourceProtector, current_token
+from authlib.oauth2.rfc6750 import BearerTokenValidator
 
 
 app = Flask(__name__)
@@ -30,8 +32,14 @@ def login():
     return oauth.egi.authorize_redirect(redirect_uri)
 
 
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect('/')
+
+
 @app.route('/auth')
-def auth(): # GET /auth?code=<authorization_code>&state=<state_value.>
+def auth():  # GET /auth?code=<authorization_code>&state=<state_value.>
     token = oauth.egi.authorize_access_token()
     userinfo = oauth.egi.userinfo()
     if userinfo:
@@ -39,16 +47,25 @@ def auth(): # GET /auth?code=<authorization_code>&state=<state_value.>
     return redirect('/')
 
 
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect('/')
+class MyBearerTokenValidator(BearerTokenValidator):
+    def authenticate_token(self, token_string):
+        return function_to_return_token(token_string)
+
+    def request_invalid(self, request):
+        return False
+
+    def token_revoked(self, token):
+        return token.revoked
 
 
-# @app.route('/resource')
-# def resource():
+# only bearer token is supported currently
+require_oauth = ResourceProtector()
+require_oauth.register_token_validator(MyBearerTokenValidator())
 
-#     user = token.get('userinfo')
-#     if user:
-#         session['user'] = user
-#     return redirect('/')
+
+@app.route('/resource')
+@require_oauth('email')
+def resource():
+    # if Token model has `.user` foreign key
+    # user = current_token.user
+    return 'OK'
