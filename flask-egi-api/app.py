@@ -1,8 +1,8 @@
-from flask import Flask, url_for, session
-from flask import render_template, redirect
+import requests
 from authlib.integrations.flask_client import OAuth
 from authlib.integrations.flask_oauth2 import ResourceProtector, current_token
-from authlib.oauth2.rfc6750 import BearerTokenValidator
+from authlib.oauth2.rfc7662 import IntrospectTokenValidator
+from flask import Flask, redirect, render_template, session, url_for
 
 
 app = Flask(__name__)
@@ -41,26 +41,23 @@ def logout():
 @app.route('/auth')
 def auth():  # GET /auth?code=<authorization_code>&state=<state_value.>
     token = oauth.egi.authorize_access_token()
-    userinfo = oauth.egi.userinfo()
-    if userinfo:
-        session['user'] = userinfo
-    return redirect('/')
+    return token['access_token']
 
 
-class MyBearerTokenValidator(BearerTokenValidator):
-    def authenticate_token(self, token_string):
-        return function_to_return_token(token_string)
-
-    def request_invalid(self, request):
-        return False
-
-    def token_revoked(self, token):
-        return token.revoked
+class MyIntrospectTokenValidator(IntrospectTokenValidator):
+    def introspect_token(self, token_string):
+        oauth.egi.load_server_metadata()
+        url = oauth.egi.server_metadata['introspection_endpoint']
+        data = {'token': token_string, 'token_type_hint': 'access_token'}
+        auth = (oauth.egi.client_id, oauth.egi.client_secret)
+        resp = requests.post(url, data=data, auth=auth)
+        resp.raise_for_status()
+        return resp.json()
 
 
 # only bearer token is supported currently
 require_oauth = ResourceProtector()
-require_oauth.register_token_validator(MyBearerTokenValidator())
+require_oauth.register_token_validator(MyIntrospectTokenValidator())
 
 
 @app.route('/resource')
